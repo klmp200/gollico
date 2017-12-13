@@ -1,5 +1,5 @@
 // Package gollico provides functions for the APIs provided by the Bibliothèque Nationale de France
-// on top of its Gallica sigital library
+// on top of its Gallica digital library
 package gollico
 
 import (
@@ -10,6 +10,7 @@ import (
 	"net/http"
 )
 
+// Record is the Full record returned by the API
 type Record struct {
 	Identifier string   `xml:"notice>record>header>identifier"`
 	Dewey      string   `xml:"dewey"`
@@ -21,6 +22,7 @@ type Record struct {
 	VideoFile  string   `xml:"video>file"`
 }
 
+// DCRecord is the OAI-DC part of the record
 type DCRecord struct {
 	Title       string    `xml:"title"`
 	Creator     string    `xml:"creator"`
@@ -37,22 +39,26 @@ type DCRecord struct {
 	Rights      []Right   `xml:"rights"`
 }
 
+// DocType is the type of document concerned, as a text string in a given language
 type DocType struct {
 	Lang        string `xml:"lang,attr"`
 	TypeDisplay string `xml:",chardata"`
 }
 
+// Right is the legal rights attached to the document, as a text string in a given language
 type Right struct {
 	Lang          string `xml:"lang,attr"`
 	RightsDisplay string `xml:",chardata"`
 }
 
+// Sound gathers the fields specific to sound documents
 type Sound struct {
 	PageNum string `xml:"num,attr"`
 	Title   string `xml:"media>title"`
 	FileURL string `xml:"media>file"`
 }
 
+// GetOAIRecord retrieves a Bibliographic record from the library, using it's ID (ark number)
 func GetOAIRecord(ark string) (Record, error) {
 
 	r := Record{}
@@ -63,6 +69,14 @@ func GetOAIRecord(ark string) (Record, error) {
 	resp, err := http.Get(BaseURL + "OAIRecord?ark=" + ark)
 	if err != nil {
 		fmt.Printf("error is %v", err)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return r, errors.New("document not found, might not be indexed in gallica")
+	}
+
+	if resp.StatusCode == http.StatusBadRequest {
+		return r, errors.New("bad request, ark parameter might be missing")
 	}
 
 	b, err := ioutil.ReadAll(resp.Body)

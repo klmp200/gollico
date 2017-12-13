@@ -1,6 +1,7 @@
 package gollico
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -8,6 +9,7 @@ import (
 type getOAIRecordTest struct {
 	Ark      string
 	Expected Record
+	Err      error
 }
 
 func TestGetOAIRecord(t *testing.T) {
@@ -67,9 +69,20 @@ func TestGetOAIRecord(t *testing.T) {
 		{
 			Ark:      "bpt6k1279113",
 			Expected: testRecordSound,
+			Err:      nil,
+		},
+		{
+			Ark:      "", // missing ark (400)
+			Expected: Record{},
+			Err:      errors.New("bad request, ark parameter might be missing"),
+		},
+		{
+			Ark:      "bpt6k5738999s", // can't find document (404)
+			Expected: Record{},
+			Err:      errors.New("bad request, ark parameter might be missing"),
 		},
 	}
-	
+
 	for _, test := range GetOAIRRecordTests {
 		actual, _ := GetOAIRecord(test.Ark)
 		if reflect.DeepEqual(test.Expected, actual) {
