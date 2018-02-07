@@ -17,21 +17,20 @@ func TestGetToc(t *testing.T) {
 	testToc1 := Toc{
 		[]TocEntry{
 			TocEntry{
-				PageOriginal: "pageoriginal",
-				EntryNumber:  "2",
-				EntryText:    "EntryText",
-				EntryURL:     "entryurl",
+				PageNumber: "2",
+				Text:       "EntryText",
+				URL:        "entryurl",
 			},
 		},
 	}
 	var GetTocTests = []getTocTest{
-		{
-			Ark:      "bpt6k97540464", // Should be tei toc
+		/*{
+			Ark:      "bpt6k83037p​", // Should be html toc
 			Expected: testToc1,
 			Err:      nil,
-		},
+		},*/
 		{
-			Ark:      "bpt6k83037p​", // Should be html toc
+			Ark:      "bpt6k97540464", // Should be tei toc
 			Expected: testToc1,
 			Err:      nil,
 		},

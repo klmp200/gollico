@@ -3,11 +3,14 @@
 package gollico
 
 import (
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
+	"strings"
+
+	"github.com/beevik/etree"
 )
 
 // Toc stores the Table of Content for a document
@@ -17,31 +20,9 @@ type Toc struct {
 
 // TocEntry stores an entry in a Table of Content
 type TocEntry struct {
-	PageOriginal string
-	EntryNumber  string
-	EntryText    string
-	EntryURL     string
-}
-
-// TocTEI used to unmarshall TEI Toc
-type TocTEI struct {
-	TocTEIEntries []TocTEIEntry `xml:"body>div0>div1>table>row"`
-}
-
-// TocTEIEntry used to unmarshall individual TEI Entries
-type TocTEIEntry struct {
-	TeiPO   string `xml:"cell>xref"`
-	TeiET   string `xml:"cell>seg"`
-	TeiEURL string `xml:"cell>xref from,attr"`
-}
-
-// TocHTML used to unmarshall HTML Toc
-type TocHTML struct {
-	TocHTMLEntries []TocHTMLEntry
-}
-
-// TocHTMLEntry used to unmarshall HTML Entries
-type TocHTMLEntry struct {
+	PageNumber string
+	Text       string
+	URL        string
 }
 
 // GetToc retrieves the Table of Content for a document
@@ -55,60 +36,64 @@ func GetToc(ark string) (Toc, error) {
 	}
 
 	resp, err := http.Get(BaseURL + "Toc?ark=ark:/12148/" + ark)
+
 	if err != nil {
-		fmt.Printf("error is %v", err)
+		fmt.Printf("error retrieving the resource: %v", err)
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return toc, errors.New("document not found, might not be indexed in gallica")
+		return toc, errors.New("document not found, might not be indexed in Gallica")
 	}
 
 	if resp.StatusCode == http.StatusBadRequest {
 		return toc, errors.New("bad request, ark parameter might be missing")
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Status not OK: %v\n", resp.StatusCode)
+		return toc, errors.New("Status not OK")
+	}
+
 	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("error reading the response body: %v", err)
+	}
 	resp.Body.Close()
-	if err != nil {
-		return toc, err
+
+	// create an xml tree
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(b); err != nil {
+		fmt.Printf("doc.ReadFromBytes error: %v\n", err)
 	}
+	root := doc.Root()
 
-	// sniff mime type
-	ct := http.DetectContentType(b)
+	for _, row := range root.FindElements("//row") {
+		tocEntry := TocEntry{}
 
-	// XML TEI
-	if ct[5:8] == "xml" {
-		err := parseTEIToc(b, &toc)
-		if err != nil {
-			return toc, err
+		// we're going to use this regex to extract
+		// the page reference to generate the right URL for each ToC Entry
+		var pRef = regexp.MustCompile(`/([0-9]+)\.`)
+
+		for _, cell := range row.FindElements("cell/*") {
+			switch tag := cell.Tag; tag {
+			case "seg":
+				tocEntry.Text = cell.Text()
+			case "xref":
+				tocEntry.PageNumber = cell.Text()
+				fromAttr := cell.SelectAttrValue("from", "")
+
+				//TODO: regex to extract 59 from "FOREIGN(9754046/000059.jp2)"
+				res := pRef.FindStringSubmatch(fromAttr)
+				// our regex didn't catch a group
+				if len(res) < 2 {
+					continue
+				}
+				pNum := strings.TrimLeft(res[1], "0")
+				pURL := "http://gallica.bnf.fr/ark:/12148/" + ark + "/f" + pNum
+				tocEntry.URL = pURL
+			}
 		}
-		return toc, nil
+		fmt.Println(tocEntry)
 	}
-
-	// HTML
-	err = parseHTMLToc(b, &toc)
-	if err != nil {
-		return toc, err
-	}
-
 	return toc, nil
-}
-
-func parseHTMLToc(b []byte, toc *Toc) error {
-
-	return nil
-}
-
-func parseTEIToc(b []byte, toc *Toc) error {
-
-	toctei := TocTEI{}
-
-	err := xml.Unmarshal(b, &toctei)
-	if err != nil {
-		fmt.Printf("error: %v", err)
-	}
-	fmt.Printf("====\n%v\n", string(b))
-	fmt.Printf("TOCTEI : \n%v\n", toctei)
-
-	return nil
 }
