@@ -4,7 +4,7 @@ package gollico
 
 import (
 	"errors"
-	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"regexp"
@@ -38,7 +38,7 @@ func GetToc(ark string) (Toc, error) {
 	resp, err := http.Get(BaseURL + "Toc?ark=ark:/12148/" + ark)
 
 	if err != nil {
-		fmt.Printf("error retrieving the resource: %v", err)
+		return toc, err
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
@@ -50,23 +50,47 @@ func GetToc(ark string) (Toc, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Status not OK: %v\n", resp.StatusCode)
 		return toc, errors.New("Status not OK")
 	}
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("error reading the response body: %v", err)
+		return toc, err
 	}
 	resp.Body.Close()
 
 	// create an xml tree
 	doc := etree.NewDocument()
+	// needed for non-UTF8 encoding of xml returned
+	doc.ReadSettings.CharsetReader = func(label string, input io.Reader) (io.Reader, error) {
+		return input, nil
+	}
+
 	if err := doc.ReadFromBytes(b); err != nil {
-		fmt.Printf("doc.ReadFromBytes error: %v\n", err)
+		return toc, err
 	}
 	root := doc.Root()
 
+	// TEI or HTML
+	switch root.Tag {
+	case "TEI.2":
+		err := toc.extractTEI(ark, doc, root)
+		if err != nil {
+			return toc, err
+		}
+	case "html":
+		err := toc.extractHTML(ark, doc, root)
+		if err != nil {
+			return toc, err
+		}
+	default:
+		return toc, errors.New("Format returned unknown (neither TEI nor HTML)")
+	}
+
+	return toc, nil
+}
+
+func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element) error {
 	for _, row := range root.FindElements("//row") {
 		tocEntry := TocEntry{}
 
@@ -80,9 +104,10 @@ func GetToc(ark string) (Toc, error) {
 				tocEntry.Text = cell.Text()
 			case "xref":
 				tocEntry.PageNumber = cell.Text()
+
 				fromAttr := cell.SelectAttrValue("from", "")
 
-				//TODO: regex to extract 59 from "FOREIGN(9754046/000059.jp2)"
+				// regex to extract 59 from "FOREIGN(9754046/000059.jp2)"
 				res := pRef.FindStringSubmatch(fromAttr)
 				// our regex didn't catch a group
 				if len(res) < 2 {
@@ -93,7 +118,17 @@ func GetToc(ark string) (Toc, error) {
 				tocEntry.URL = pURL
 			}
 		}
-		fmt.Println(tocEntry)
+		toc.TocEntries = append(toc.TocEntries, tocEntry)
+		// TODO: check order of entries in slice
 	}
-	return toc, nil
+	if len(toc.TocEntries) == 0 {
+		return errors.New("There was no entries in this table of contents")
+	}
+
+	return nil
+}
+
+func (toc *Toc) extractHTML(ark string, doc *etree.Document, root *etree.Element) error {
+
+	return nil
 }
