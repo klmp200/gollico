@@ -3,13 +3,14 @@
 package gollico
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 )
 
 type getTocTest struct {
 	Ark      string
-	Expected Toc
+	Expected []byte
 	Err      error
 }
 
@@ -98,6 +99,12 @@ func TestGetToc(t *testing.T) {
 			},
 		},
 	}
+
+	result1, err := json.Marshal(testToc1)
+	if err != nil {
+		t.Fatalf("couldn't marshal test data to json: %v", err)
+	}
+
 	var GetTocTests = []getTocTest{
 		/*{
 			Ark:      "bpt6k83037p​", // Should be html toc
@@ -106,7 +113,7 @@ func TestGetToc(t *testing.T) {
 		},*/
 		{
 			Ark:      "bpt6k61076295", // Should be tei toc
-			Expected: testToc1,
+			Expected: result1,
 			Err:      nil,
 		},
 	}

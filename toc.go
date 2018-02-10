@@ -3,6 +3,7 @@
 package gollico
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -26,36 +27,38 @@ type TocEntry struct {
 }
 
 // GetToc retrieves the Table of Content for a document
-func GetToc(ark string) (Toc, error) {
+// returns it as json
+func GetToc(ark string) ([]byte, error) {
 
 	// Table of content to return
 	toc := Toc{}
+	var result []byte
 
 	if ark == "" {
-		return toc, errors.New("Missing required parameter ark: identifier")
+		return result, errors.New("Missing required parameter ark: identifier")
 	}
 
 	resp, err := http.Get(BaseURL + "Toc?ark=ark:/12148/" + ark)
 
 	if err != nil {
-		return toc, err
+		return result, err
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return toc, errors.New("document not found, might not be indexed in Gallica")
+		return result, errors.New("document not found, might not be indexed in Gallica")
 	}
 
 	if resp.StatusCode == http.StatusBadRequest {
-		return toc, errors.New("bad request, ark parameter might be missing")
+		return result, errors.New("bad request, ark parameter might be missing")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return toc, errors.New("Status not OK")
+		return result, errors.New("Status not OK")
 	}
 
 	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return toc, err
+		return result, err
 	}
 	resp.Body.Close()
 
@@ -67,7 +70,7 @@ func GetToc(ark string) (Toc, error) {
 	}
 
 	if err := doc.ReadFromBytes(b); err != nil {
-		return toc, err
+		return result, err
 	}
 	root := doc.Root()
 
@@ -76,20 +79,26 @@ func GetToc(ark string) (Toc, error) {
 	case "TEI.2":
 		err := toc.extractTEI(ark, doc, root)
 		if err != nil {
-			return toc, err
+			return result, err
 		}
 	case "html":
 		err := toc.extractHTML(ark, doc, root)
 		if err != nil {
-			return toc, err
+			return result, err
 		}
 	default:
-		return toc, errors.New("Format returned unknown (neither TEI nor HTML)")
+		return result, errors.New("Format returned unknown (neither TEI nor HTML)")
 	}
 
-	return toc, nil
+	// marshalling the struct into json
+	result, err = json.Marshal(toc)
+	if err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
+// extractTEI parses the TEI response into a Toc struct
 func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element) error {
 	for _, row := range root.FindElements("//row") {
 		tocEntry := TocEntry{}
@@ -119,15 +128,15 @@ func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element)
 			}
 		}
 		toc.TocEntries = append(toc.TocEntries, tocEntry)
-		// TODO: check order of entries in slice
 	}
 	if len(toc.TocEntries) == 0 {
-		return errors.New("There was no entries in this table of contents")
+		return errors.New("There were no entries in this table of contents")
 	}
 
 	return nil
 }
 
+// TODO: extractHTML
 func (toc *Toc) extractHTML(ark string, doc *etree.Document, root *etree.Element) error {
 
 	return nil
