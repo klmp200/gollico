@@ -21,8 +21,12 @@ type Toc struct {
 
 // TocEntry stores an entry in a Table of Content
 type TocEntry struct {
+	Text string
+	Href []href
+}
+
+type href struct {
 	PageNumber string
-	Text       string
 	URL        string
 }
 
@@ -39,17 +43,12 @@ func GetToc(ark string) ([]byte, error) {
 	}
 
 	resp, err := http.Get(BaseURL + "Toc?ark=ark:/12148/" + ark)
-
 	if err != nil {
 		return result, err
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
 		return result, errors.New("document not found, might not be indexed in Gallica")
-	}
-
-	if resp.StatusCode == http.StatusBadRequest {
-		return result, errors.New("bad request, ark parameter might be missing")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -69,6 +68,10 @@ func GetToc(ark string) ([]byte, error) {
 		return input, nil
 	}
 
+	// xml Decoder.Strict = false, needed for input containing common
+	// mistakes, specifically unknown or malformed
+	//character entities (sequences beginning with &)
+	doc.ReadSettings.Permissive = true
 	if err := doc.ReadFromBytes(b); err != nil {
 		return result, err
 	}
@@ -95,6 +98,7 @@ func GetToc(ark string) ([]byte, error) {
 	if err != nil {
 		return result, err
 	}
+
 	return result, nil
 }
 
@@ -102,9 +106,9 @@ func GetToc(ark string) ([]byte, error) {
 func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element) error {
 	for _, row := range root.FindElements("//row") {
 		tocEntry := TocEntry{}
-
-		// we're going to use this regex to extract
-		// the page reference to generate the right URL for each ToC Entry
+		refs := []href{}
+		// regex to extract 59 from "FOREIGN(9754046/000059.jp2)"
+		// i.e. the page reference to generate the right URL for each ToC Entry
 		var pRef = regexp.MustCompile(`/([0-9]+)\.`)
 
 		for _, cell := range row.FindElements("cell/*") {
@@ -112,7 +116,6 @@ func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element)
 			case "seg":
 				tocEntry.Text = cell.Text()
 			case "xref":
-				tocEntry.PageNumber = cell.Text()
 
 				fromAttr := cell.SelectAttrValue("from", "")
 
@@ -123,10 +126,17 @@ func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element)
 					continue
 				}
 				pNum := strings.TrimLeft(res[1], "0")
-				pURL := "http://gallica.bnf.fr/ark:/12148/" + ark + "/f" + pNum
-				tocEntry.URL = pURL
+				URL := "http://gallica.bnf.fr/ark:/12148/" + ark + "/f" + pNum
+
+				thisRef := href{
+					PageNumber: cell.Text(),
+					URL:        URL,
+				}
+				refs = append(refs, thisRef)
 			}
 		}
+
+		tocEntry.Href = refs
 		toc.TocEntries = append(toc.TocEntries, tocEntry)
 	}
 	if len(toc.TocEntries) == 0 {
@@ -138,6 +148,34 @@ func (toc *Toc) extractTEI(ark string, doc *etree.Document, root *etree.Element)
 
 // TODO: extractHTML
 func (toc *Toc) extractHTML(ark string, doc *etree.Document, root *etree.Element) error {
+	for _, row := range root.FindElements("//div[@class='Texte']") {
+		tocEntry := TocEntry{}
+		tocEntry.Text = row.Text()
+		refs := []href{}
 
+		// regex: 152 from "javascript:allerA('0083037', '152')"
+		var pRef = regexp.MustCompile(`'(\d+)'\)`)
+		a := row.SelectElements("a")
+		for _, entry := range a {
+			if entry != nil {
+
+				attr := entry.SelectAttrValue("href", "")
+				res := pRef.FindStringSubmatch(attr)
+				// our regex didn't catch a group
+				if len(res) < 2 {
+					continue
+				}
+				URL := "http://gallica.bnf.fr/ark:/12148/" + ark + "/f" + res[1]
+
+				thisRef := href{
+					PageNumber: entry.Text(),
+					URL:        URL,
+				}
+				refs = append(refs, thisRef)
+			}
+		}
+		tocEntry.Href = refs
+		toc.TocEntries = append(toc.TocEntries, tocEntry)
+	}
 	return nil
 }
