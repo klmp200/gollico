@@ -1,8 +1,9 @@
 package gollico
 
 import (
-	"fmt"
-	"log"
+	"errors"
+	"io/ioutil"
+	"net/http"
 	"strconv"
 )
 
@@ -33,12 +34,9 @@ type Params struct {
 }
 
 // GetImage retrieves an image from the IIIF Server
-// requires a Params struct
-// required fields : Ark, PageID
-// other fields have default values if sent as nil
-func (iDoc IIIFDoc) GetImage(p Params) {
+func (iDoc IIIFDoc) GetImage(p Params) ([]byte, error) {
 	if p.Ark == "" || p.PageID == "" {
-		log.Fatalf("missing required param (Ark, PageID")
+		return nil, errors.New("missing required param (Ark, PageID)")
 	}
 
 	var region string
@@ -84,5 +82,21 @@ func (iDoc IIIFDoc) GetImage(p Params) {
 	}
 
 	url := BaseURLIIIF + p.Ark + "/" + p.PageID + "/" + region + "/" + size + "/" + rotation + "/" + quality + "." + format
-	fmt.Println(url)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		errMessage := "HTTP response status not OK: " + resp.Status
+		return nil, errors.New(errMessage)
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body.Close()
+
+	return data, nil
 }
