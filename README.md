@@ -2,11 +2,12 @@
 
 A Go client for the APIs provided by the French National Library on top of the Gallica Digital Library, as documented at http://api.bnf.fr/documents-numeriques
 
-Not sure I'll implement all of the APIs, just playing around with them atm.
+_Just playing around with them atm, do not use._ 
 
 ## Implemented
 
 - **Table of Contents**. Given an _ark_ identifier for a document in the digital library, retrieves its Table of Content and returns it as json. Unit tested for TEI tables of contents, not for HTML table of contents - should more or less work.
+- **IIIF** (International Image Interoperability Framework): standardized API to retrieve and manipulate images from the digital library
 
 ## Not implemented
 
@@ -16,4 +17,3 @@ Not sure I'll implement all of the APIs, just playing around with them atm.
 - Occurrence: retrieves the list of occurrences of a term in an indexed document
 - Text: retrieves the OCRed text of a page / document
 - Image: retrieves the image of a physical page of a document in various predefined formats (thmbnail, etc.)
-- IIIF (International Image Interoperability Framework): standardized API to retrieve and manipulate images from the digital library
